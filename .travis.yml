@@ -5,6 +5,9 @@ go:
   - "1.9"
 
 install:
+  - go get github.com/google/uuid
+	- go get github.com/hudl/fargo
+	- go get github.com/pkg/errors
 
 script:
   - go test ./...

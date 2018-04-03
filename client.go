@@ -1,12 +1,17 @@
 package eureka
 
 import (
+	"context"
 	"fmt"
 	"os"
-
-	"github.com/pkg/errors"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/hudl/fargo"
+	"github.com/pkg/errors"
 )
 
 // Client 代表一个简单的 Eureka Client
@@ -16,6 +21,117 @@ type Client struct {
 
 	IPAddr string
 	Port   int
+
+	insOnce  sync.Once
+	instance *fargo.Instance
+
+	runM    sync.Mutex
+	running bool
+	stopCh  chan struct{}
+}
+
+// Run 启动客户端注册
+func (c *Client) Run(address ...string) error {
+	c.runM.Lock()
+	defer c.runM.Unlock()
+
+	if c.running {
+		return errors.New("client is already running")
+	}
+
+	go c.run(address...)
+
+	return nil
+}
+
+func (c *Client) run(address ...string) {
+	c.running = true
+	c.stopCh = make(chan struct{})
+
+	instance := c.getInstance()
+	e := fargo.NewConn(address...)
+	// 注册实例
+	if err := e.RegisterInstance(instance); err != nil {
+		c.running = false
+		return
+	}
+
+	// 发送心跳
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+	HeartBeatLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				break HeartBeatLoop
+			default:
+				e.HeartBeatInstance(instance)
+			}
+
+			time.Sleep(10 * time.Second)
+		}
+	}()
+
+	cleanFunc := func() {
+		// 注销实例，取消心跳
+		e.DeregisterInstance(instance)
+		cancel()
+		c.running = false
+	}
+
+	go c.listenSystemTerm(cleanFunc)
+
+	select {
+	case <-c.stopCh:
+		cleanFunc()
+	}
+}
+
+func (c *Client) listenSystemTerm(cleanFunc func()) {
+	exitCh := make(chan os.Signal)
+	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+	select {
+	case <-c.stopCh:
+		break
+	case <-exitCh:
+		cleanFunc()
+	}
+}
+
+// Stop 停止客户端
+func (c *Client) Stop() error {
+	c.runM.Lock()
+	defer c.runM.Unlock()
+
+	if !c.running {
+		return errors.New("client is not running")
+	}
+
+	close(c.stopCh)
+	c.running = false
+	return nil
+}
+
+// 获取 eureka instance 实例
+func (c *Client) getInstance() *fargo.Instance {
+	c.insOnce.Do(func() {
+		c.instance = &fargo.Instance{
+			HostName:         c.HostName,
+			App:              c.App,
+			IPAddr:           c.IPAddr,
+			VipAddress:       c.IPAddr,
+			DataCenterInfo:   fargo.DataCenterInfo{Name: fargo.MyOwn},
+			SecureVipAddress: c.IPAddr,
+			Status:           fargo.UP,
+		}
+
+		if c.Port > 0 {
+			c.instance.Port = c.Port
+			c.instance.PortEnabled = true
+		}
+	})
+
+	return c.instance
 }
 
 // NewClient 新建一个 Client

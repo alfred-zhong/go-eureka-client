@@ -6,8 +6,8 @@ go:
 
 install:
   - go get github.com/google/uuid
-	- go get github.com/hudl/fargo
-	- go get github.com/pkg/errors
+  - go get github.com/hudl/fargo
+  - go get github.com/pkg/errors
 
 script:
   - go test ./...

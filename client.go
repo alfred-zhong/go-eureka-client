@@ -14,6 +14,9 @@ import (
 	"github.com/pkg/errors"
 )
 
+// 默认心跳为 10s
+const defaultHeartBeatSeconds = 10
+
 // Client 代表一个简单的 Eureka Client
 type Client struct {
 	HostName string
@@ -25,26 +28,24 @@ type Client struct {
 	insOnce  sync.Once
 	instance *fargo.Instance
 
-	runM    sync.Mutex
+	runM    sync.RWMutex
 	running bool
 	stopCh  chan struct{}
 }
 
 // Run 启动客户端注册
 func (c *Client) Run(address ...string) error {
-	c.runM.Lock()
-	defer c.runM.Unlock()
+	c.runM.RLock()
 
+	// 如果已经运行，提前返回
 	if c.running {
+		c.runM.RUnlock()
 		return errors.New("client is already running")
 	}
+	c.runM.RUnlock()
 
-	go c.run(address...)
-
-	return nil
-}
-
-func (c *Client) run(address ...string) {
+	// 开始运行
+	c.runM.Lock()
 	c.running = true
 	c.stopCh = make(chan struct{})
 
@@ -53,9 +54,17 @@ func (c *Client) run(address ...string) {
 	// 注册实例
 	if err := e.RegisterInstance(instance); err != nil {
 		c.running = false
-		return
+		c.runM.Unlock()
+		return errors.Wrapf(err, "register to %v fail", address)
 	}
+	c.runM.Unlock()
 
+	go c.run(&e)
+
+	return nil
+}
+
+func (c *Client) run(e *fargo.EurekaConnection) {
 	// 发送心跳
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -65,16 +74,16 @@ func (c *Client) run(address ...string) {
 			case <-ctx.Done():
 				break HeartBeatLoop
 			default:
-				e.HeartBeatInstance(instance)
+				e.HeartBeatInstance(c.instance)
 			}
 
-			time.Sleep(10 * time.Second)
+			time.Sleep(defaultHeartBeatSeconds * time.Second)
 		}
 	}()
 
 	cleanFunc := func() {
 		// 注销实例，取消心跳
-		e.DeregisterInstance(instance)
+		e.DeregisterInstance(c.instance)
 		cancel()
 		c.running = false
 	}
@@ -87,29 +96,40 @@ func (c *Client) run(address ...string) {
 	}
 }
 
+// 监听操作系统停止信号
 func (c *Client) listenSystemTerm(cleanFunc func()) {
 	exitCh := make(chan os.Signal)
-	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-c.stopCh:
 		break
 	case <-exitCh:
 		cleanFunc()
+		os.Exit(0)
 	}
 }
 
 // Stop 停止客户端
 func (c *Client) Stop() error {
-	c.runM.Lock()
-	defer c.runM.Unlock()
+	c.runM.RLock()
+	defer c.runM.RUnlock()
 
 	if !c.running {
 		return errors.New("client is not running")
 	}
 
 	close(c.stopCh)
-	c.running = false
+	for c.running {
+	}
 	return nil
+}
+
+// IsRunning 返回 Client 是否正处于运行
+func (c *Client) IsRunning() bool {
+	c.runM.RLock()
+	defer c.runM.RUnlock()
+
+	return c.running
 }
 
 // 获取 eureka instance 实例
@@ -119,15 +139,18 @@ func (c *Client) getInstance() *fargo.Instance {
 			HostName:         c.HostName,
 			App:              c.App,
 			IPAddr:           c.IPAddr,
-			VipAddress:       c.IPAddr,
+			VipAddress:       c.App,
+			SecureVipAddress: c.App,
 			DataCenterInfo:   fargo.DataCenterInfo{Name: fargo.MyOwn},
-			SecureVipAddress: c.IPAddr,
 			Status:           fargo.UP,
 		}
 
 		if c.Port > 0 {
 			c.instance.Port = c.Port
 			c.instance.PortEnabled = true
+			c.instance.HomePageUrl = fmt.Sprintf("http://%s:%d/", c.instance.HostName, c.Port)
+			// c.instance.HealthCheckUrl = c.instance.HomePageUrl + "/health"
+			// c.instance.StatusPageUrl = c.instance.HomePageUrl + "/info"
 		}
 	})
 
@@ -137,7 +160,7 @@ func (c *Client) getInstance() *fargo.Instance {
 // NewClient 新建一个 Client
 func NewClient(app string) (*Client, error) {
 	if app == "" {
-		return nil, errors.New("app 不能为空")
+		return nil, errors.New("app can not be empty")
 	}
 
 	c := &Client{
@@ -150,7 +173,7 @@ func NewClient(app string) (*Client, error) {
 // NewClientWithPort 新建一个带有端口的 Client
 func NewClientWithPort(app string, port int) (*Client, error) {
 	if app == "" {
-		return nil, errors.New("app 不能为空")
+		return nil, errors.New("app can not be empty")
 	}
 
 	c := &Client{
@@ -177,9 +200,5 @@ func (c *Client) autoFill() {
 		hn = uuid.New().String()
 	}
 
-	if c.Port <= 0 {
-		c.HostName = fmt.Sprintf("%s:%s", hn, c.App)
-	} else {
-		c.HostName = fmt.Sprintf("%s:%s:%d", hn, c.App, c.Port)
-	}
+	c.HostName = hn
 }

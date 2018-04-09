@@ -19,8 +19,7 @@ func init() {
 	logging.SetLevel(logging.WARNING, "fargo")
 }
 
-// 默认心跳为 10s
-const defaultHeartBeatSeconds = 10
+const defaultHeartBeatInterval = 60 * time.Second
 
 // Instance 代表一个简单的 Eureka 实例
 type Instance struct {
@@ -29,6 +28,9 @@ type Instance struct {
 
 	IPAddr string
 	Port   int
+
+	// 心跳发送间隔，默认 60s
+	HeartBeatInterval time.Duration
 
 	insOnce sync.Once
 	ins     *fargo.Instance
@@ -82,7 +84,12 @@ func (ins *Instance) run(e *fargo.EurekaConnection) {
 				e.HeartBeatInstance(ins.ins)
 			}
 
-			time.Sleep(defaultHeartBeatSeconds * time.Second)
+			interval := ins.HeartBeatInterval
+			if interval <= 0 {
+				interval = defaultHeartBeatInterval
+			}
+			// fmt.Printf("sleep interval: %f\n", interval.Seconds())
+			time.Sleep(interval)
 		}
 	}()
 

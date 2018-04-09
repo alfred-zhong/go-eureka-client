@@ -11,8 +11,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hudl/fargo"
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 )
+
+func init() {
+	logging.SetLevel(logging.WARNING, "fargo")
+}
 
 // 默认心跳为 10s
 const defaultHeartBeatSeconds = 10

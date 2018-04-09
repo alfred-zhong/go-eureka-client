@@ -143,12 +143,19 @@ func (c *Client) getInstance() *fargo.Instance {
 			SecureVipAddress: c.App,
 			DataCenterInfo:   fargo.DataCenterInfo{Name: fargo.MyOwn},
 			Status:           fargo.UP,
+			/* UniqueID: func(i fargo.Instance) string {
+				id := i.HostName + ":" + i.App
+				if i.PortEnabled {
+					id += ":" + strconv.Itoa(i.Port)
+				}
+				return id
+			}, */
 		}
 
 		if c.Port > 0 {
 			c.instance.Port = c.Port
 			c.instance.PortEnabled = true
-			c.instance.HomePageUrl = fmt.Sprintf("http://%s:%d/", c.instance.HostName, c.Port)
+			c.instance.HomePageUrl = fmt.Sprintf("http://%s:%d/", c.instance.IPAddr, c.Port)
 			// c.instance.HealthCheckUrl = c.instance.HomePageUrl + "/health"
 			// c.instance.StatusPageUrl = c.instance.HomePageUrl + "/info"
 		}

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gojektech/heimdall"
 	"github.com/google/uuid"
 	"github.com/hudl/fargo"
 	"github.com/op/go-logging"
@@ -252,4 +253,18 @@ func (ins *Instance) autoFill() {
 	}
 
 	ins.HostName = hn
+}
+
+// GetAppClient 根据 App 名称获取 AppClient
+func (ins *Instance) GetAppClient(app string) *AppClient {
+	return ins.GetAppClientWithTimeout(app, 0)
+}
+
+// GetAppClientWithTimeout 根据 App 名称获取带有超时的 AppClient
+func (ins *Instance) GetAppClientWithTimeout(app string, timeout time.Duration) *AppClient {
+	return &AppClient{
+		e:      ins.e,
+		App:    app,
+		client: heimdall.NewHTTPClient(timeout),
+	}
 }

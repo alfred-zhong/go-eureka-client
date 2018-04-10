@@ -23,6 +23,8 @@ const defaultHeartBeatInterval = 60 * time.Second
 
 // Instance 代表一个简单的 Eureka 实例
 type Instance struct {
+	e *fargo.EurekaConnection
+
 	HostName string
 	App      string
 
@@ -40,8 +42,15 @@ type Instance struct {
 	stopCh  chan struct{}
 }
 
-// Run 启动实例注册
-func (ins *Instance) Run(address ...string) error {
+// SetServiceUrls 设置 Eureka Server 的服务地址
+func (ins *Instance) SetServiceUrls(serviceUrls ...string) {
+	e := fargo.NewConn(serviceUrls...)
+	ins.e = &e
+}
+
+// Run 启动实例注册。方法会监听系统 SIGINT 和 SIGTERM 信号并从 Eureka Server 上注销。
+// 方法不会阻塞，会立即返回。
+func (ins *Instance) Run() error {
 	ins.runM.RLock()
 
 	// 如果已经运行，提前返回
@@ -57,16 +66,15 @@ func (ins *Instance) Run(address ...string) error {
 	ins.stopCh = make(chan struct{})
 
 	fargoIns := ins.getFargoInstance()
-	e := fargo.NewConn(address...)
 	// 注册实例
-	if err := e.RegisterInstance(fargoIns); err != nil {
+	if err := ins.e.RegisterInstance(fargoIns); err != nil {
 		ins.running = false
 		ins.runM.Unlock()
-		return errors.Wrapf(err, "register to %v fail", address)
+		return errors.Wrapf(err, "register to %v fail", ins.e.ServiceUrls)
 	}
 	ins.runM.Unlock()
 
-	go ins.run(&e)
+	go ins.run(ins.e)
 
 	return nil
 }
@@ -177,25 +185,23 @@ func (ins *Instance) getFargoInstance() *fargo.Instance {
 }
 
 // NewInstance 新建一个实例
-func NewInstance(app string) (*Instance, error) {
-	if app == "" {
-		return nil, errors.New("app can not be empty")
-	}
-
-	ins := &Instance{
-		App: app,
-	}
-	ins.autoFill()
-	return ins, nil
+func NewInstance(app string, serviceUrls ...string) (*Instance, error) {
+	return NewInstanceWithPort(app, 0, serviceUrls...)
 }
 
 // NewInstanceWithPort 新建一个带有端口的实例
-func NewInstanceWithPort(app string, port int) (*Instance, error) {
+func NewInstanceWithPort(app string, port int, serviceUrls ...string) (*Instance, error) {
 	if app == "" {
 		return nil, errors.New("app can not be empty")
 	}
 
+	if len(serviceUrls) == 0 {
+		return nil, errors.New("serviceUrls can not be empty")
+	}
+
+	conn := fargo.NewConn(serviceUrls...)
 	ins := &Instance{
+		e:    &conn,
 		App:  app,
 		Port: port,
 	}

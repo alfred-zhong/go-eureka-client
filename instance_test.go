@@ -5,7 +5,7 @@ import (
 )
 
 func Test_NewInstance(t *testing.T) {
-	c1, err := NewInstance("testapp")
+	c1, err := NewInstance("testapp", "http://127.0.0.1:8080/eureka")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func Test_NewInstance(t *testing.T) {
 }
 
 func Test_NewInstanceWithPort(t *testing.T) {
-	c1, err := NewInstanceWithPort("testapp", 9000)
+	c1, err := NewInstanceWithPort("testapp", 9000, "http://127.0.0.1:8080/eureka")
 	if err != nil {
 		t.Fatal(err)
 	}

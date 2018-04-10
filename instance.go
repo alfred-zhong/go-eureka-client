@@ -28,8 +28,9 @@ type Instance struct {
 	HostName string
 	App      string
 
-	IPAddr string
-	Port   int
+	IPAddr     string
+	Port       int
+	SecurePort int
 
 	// 心跳发送间隔，默认 60s
 	HeartBeatInterval time.Duration
@@ -163,22 +164,27 @@ func (ins *Instance) getFargoInstance() *fargo.Instance {
 			SecureVipAddress: ins.App,
 			DataCenterInfo:   fargo.DataCenterInfo{Name: fargo.MyOwn},
 			Status:           fargo.UP,
-			/* UniqueID: func(i fargo.Instance) string {
-				id := i.HostName + ":" + i.App
-				if i.PortEnabled {
-					id += ":" + strconv.Itoa(i.Port)
-				}
-				return id
-			}, */
 		}
 
 		if ins.Port > 0 {
 			ins.ins.Port = ins.Port
 			ins.ins.PortEnabled = true
-			ins.ins.HomePageUrl = fmt.Sprintf("http://%s:%d/", ins.ins.IPAddr, ins.Port)
-			// ins.ins.HealthCheckUrl = ins.ins.HomePageUrl + "/health"
-			// ins.ins.StatusPageUrl = ins.ins.HomePageUrl + "/info"
 		}
+		if ins.SecurePort > 0 {
+			ins.ins.SecurePort = ins.SecurePort
+			ins.ins.SecurePortEnabled = true
+		}
+
+		// 填充 homePageUrl
+		if ins.ins.SecurePortEnabled {
+			ins.ins.HomePageUrl = fmt.Sprintf("https://%s:%d/", ins.ins.IPAddr, ins.SecurePort)
+		} else if ins.ins.PortEnabled {
+			ins.ins.HomePageUrl = fmt.Sprintf("http://%s:%d/", ins.ins.IPAddr, ins.Port)
+		}
+
+		// TODO: 填充 healthCheckUrl 和 statusPageUrl
+		// ins.ins.HealthCheckUrl = ins.ins.HomePageUrl + "/health"
+		// ins.ins.StatusPageUrl = ins.ins.HomePageUrl + "/info"
 	})
 
 	return ins.ins
@@ -189,7 +195,7 @@ func NewInstance(app string, serviceUrls ...string) (*Instance, error) {
 	return NewInstanceWithPort(app, 0, serviceUrls...)
 }
 
-// NewInstanceWithPort 新建一个带有端口的实例
+// NewInstanceWithPort 新建一个带有 HTTP 端口的实例
 func NewInstanceWithPort(app string, port int, serviceUrls ...string) (*Instance, error) {
 	if app == "" {
 		return nil, errors.New("app can not be empty")
@@ -204,6 +210,26 @@ func NewInstanceWithPort(app string, port int, serviceUrls ...string) (*Instance
 		e:    &conn,
 		App:  app,
 		Port: port,
+	}
+	ins.autoFill()
+	return ins, nil
+}
+
+// NewInstanceWithSecurePort 新建一个带有 HTTPS 端口的实例
+func NewInstanceWithSecurePort(app string, securePort int, serviceUrls ...string) (*Instance, error) {
+	if app == "" {
+		return nil, errors.New("app can not be empty")
+	}
+
+	if len(serviceUrls) == 0 {
+		return nil, errors.New("serviceUrls can not be empty")
+	}
+
+	conn := fargo.NewConn(serviceUrls...)
+	ins := &Instance{
+		e:          &conn,
+		App:        app,
+		SecurePort: securePort,
 	}
 	ins.autoFill()
 	return ins, nil

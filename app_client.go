@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// AppClient 代表一个对应 App 的客户端，用以请求数据
+// AppClient defines http client to send request to specified app instance.
 type AppClient struct {
 	e *fargo.EurekaConnection
 
@@ -28,12 +28,12 @@ type AppClient struct {
 	client heimdall.Client
 }
 
-// NewAppClient 新建一个 AppClient
+// NewAppClient returns a new AppClient.
 func NewAppClient(app string, serviceUrls ...string) (*AppClient, error) {
 	return NewAppClientWithTimeout(app, 0, serviceUrls...)
 }
 
-// NewAppClientWithTimeout 新建一个指定超时的 AppClient
+// NewAppClientWithTimeout returns a new AppClient with timeout.
 func NewAppClientWithTimeout(app string, timeout time.Duration, serviceUrls ...string) (*AppClient, error) {
 	if app == "" {
 		return nil, errors.New("app can not be empty")
@@ -51,8 +51,10 @@ func NewAppClientWithTimeout(app string, timeout time.Duration, serviceUrls ...s
 	}, nil
 }
 
-// GetURL 随机获取当前 App 的某个 Instance 的 URL
-func (ac *AppClient) GetURL() (string, error) {
+// GetURL randomly choose one instance of the app and returns its
+// url(format: http://ip:port/). The url is valid only when the err is nil.
+// The err is not nil when there's no instance of the app.
+func (ac *AppClient) GetURL() (url string, err error) {
 	ac.insMapM.RLock()
 	insMapLen := len(ac.insIDs)
 	ac.insMapM.RUnlock()
@@ -83,7 +85,7 @@ func (ac *AppClient) chooseInstance() (*fargo.Instance, error) {
 	return ac.insMap[id], nil
 }
 
-// RefreshInstance 刷新当前 App 的 Instance 列表
+// RefreshInstance refresh the instance list.
 func (ac *AppClient) RefreshInstance() error {
 	if ac.App == "" {
 		return errors.New("app is empty, can not refresh")
@@ -122,12 +124,12 @@ func getInstanceURL(i *fargo.Instance) (string, error) {
 		return "", errors.New("instance is nil")
 	}
 
-	// 优先选择 homePageUrl
+	// Use homePageUrl firstly.
 	if i.HomePageUrl != "" {
 		return i.HomePageUrl, nil
 	}
 
-	// homePageUrl 为空时尝试生成 https 或者 http
+	// Generate the url when the homePageUrl is empty.
 	if i.SecurePortEnabled {
 		return fmt.Sprintf("https://%s:%d/", i.IPAddr, i.SecurePort), nil
 	}
@@ -139,7 +141,7 @@ func getInstanceURL(i *fargo.Instance) (string, error) {
 	return "", errors.Errorf("get instance: %s without url", generateInstanceID(i))
 }
 
-// Get 请求
+// Get sends a GET request.
 func (ac *AppClient) Get(path string, headers http.Header) (*http.Response, error) {
 	url, err := ac.concatURL(path)
 	if err != nil {
@@ -148,7 +150,7 @@ func (ac *AppClient) Get(path string, headers http.Header) (*http.Response, erro
 	return ac.client.Get(url, headers)
 }
 
-// Post 请求
+// Post sends a POST request.
 func (ac *AppClient) Post(path string, body io.Reader, headers http.Header) (*http.Response, error) {
 	url, err := ac.concatURL(path)
 	if err != nil {
@@ -157,7 +159,7 @@ func (ac *AppClient) Post(path string, body io.Reader, headers http.Header) (*ht
 	return ac.Post(url, body, headers)
 }
 
-// Put 请求
+// Put sends a Put request.
 func (ac *AppClient) Put(path string, body io.Reader, headers http.Header) (*http.Response, error) {
 	url, err := ac.concatURL(path)
 	if err != nil {
@@ -166,22 +168,22 @@ func (ac *AppClient) Put(path string, body io.Reader, headers http.Header) (*htt
 	return ac.Put(url, body, headers)
 }
 
-// Patch 请求
-func (ac *AppClient) Patch(path string, body io.Reader, headers http.Header) (*http.Response, error) {
-	url, err := ac.concatURL(path)
-	if err != nil {
-		return nil, err
-	}
-	return ac.Patch(url, body, headers)
-}
-
-// Delete 请求
+// Delete sends a DELETE request.
 func (ac *AppClient) Delete(path string, headers http.Header) (*http.Response, error) {
 	url, err := ac.concatURL(path)
 	if err != nil {
 		return nil, err
 	}
 	return ac.Delete(url, headers)
+}
+
+// Patch sends a Patch request.
+func (ac *AppClient) Patch(path string, body io.Reader, headers http.Header) (*http.Response, error) {
+	url, err := ac.concatURL(path)
+	if err != nil {
+		return nil, err
+	}
+	return ac.Patch(url, body, headers)
 }
 
 func (ac *AppClient) concatURL(path string) (string, error) {

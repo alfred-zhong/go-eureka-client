@@ -1,4 +1,5 @@
 # go-eureka-client
-支持 Netflix Eureka 的 Go 客户端
 
-封装 hudl/fargo 尝试建立一个简单的 eureka 客户端，使 Go 程序能够与 Spring Cloud 项目结合运行。
+[![Build Status](https://www.travis-ci.org/alfred-zhong/go-eureka-client.svg?branch=master)](https://www.travis-ci.org/alfred-zhong/go-eureka-client) [![GoDoc](https://godoc.org/github.com/alfred-zhong/go-eureka-client?status.svg)](https://godoc.org/github.com/alfred-zhong/go-eureka-client) [![Go Report Card](https://goreportcard.com/badge/github.com/alfred-zhong/go-eureka-client)](https://goreportcard.com/report/github.com/alfred-zhong/go-eureka-client)
+
+A simple package used for golang developing integrated with eureka.

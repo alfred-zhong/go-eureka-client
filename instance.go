@@ -17,12 +17,13 @@ import (
 )
 
 func init() {
+	// Default just print logs above level of WARNING bt fargo.
 	logging.SetLevel(logging.WARNING, "fargo")
 }
 
 const defaultHeartBeatInterval = 60 * time.Second
 
-// Instance 代表一个简单的 Eureka 实例
+// Instance defines a simple eureka instance.
 type Instance struct {
 	e *fargo.EurekaConnection
 
@@ -33,7 +34,7 @@ type Instance struct {
 	Port       int
 	SecurePort int
 
-	// 心跳发送间隔，默认 60s
+	// Default 60s
 	HeartBeatInterval time.Duration
 
 	insOnce sync.Once
@@ -44,31 +45,34 @@ type Instance struct {
 	stopCh  chan struct{}
 }
 
-// SetServiceUrls 设置 Eureka Server 的服务地址
+// SetServiceUrls sets the service urls of eureka server.
 func (ins *Instance) SetServiceUrls(serviceUrls ...string) {
 	e := fargo.NewConn(serviceUrls...)
 	ins.e = &e
 }
 
-// Run 启动实例注册。方法会监听系统 SIGINT 和 SIGTERM 信号并从 Eureka Server 上注销。
-// 方法不会阻塞，会立即返回。
+// Run make the instance register to the eureka server. Note that this method
+// will not block.
+//
+// Also it listens for SIGINT and SIGTERM signal. By Receiving them, it will
+// deregister ths instance from the eureka server.
 func (ins *Instance) Run() error {
 	ins.runM.RLock()
 
-	// 如果已经运行，提前返回
+	// If already running, returns.
 	if ins.running {
 		ins.runM.RUnlock()
 		return errors.New("instance is already running")
 	}
 	ins.runM.RUnlock()
 
-	// 开始运行
+	// Running the instance
 	ins.runM.Lock()
 	ins.running = true
 	ins.stopCh = make(chan struct{})
 
 	fargoIns := ins.getFargoInstance()
-	// 注册实例
+	// Register the instance to the eureka server.
 	if err := ins.e.RegisterInstance(fargoIns); err != nil {
 		ins.running = false
 		ins.runM.Unlock()
@@ -82,7 +86,7 @@ func (ins *Instance) Run() error {
 }
 
 func (ins *Instance) run(e *fargo.EurekaConnection) {
-	// 发送心跳
+	// Send heartbeat in loop.
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 	HeartBeatLoop:
@@ -104,7 +108,7 @@ func (ins *Instance) run(e *fargo.EurekaConnection) {
 	}()
 
 	cleanFunc := func() {
-		// 注销实例，取消心跳
+		// Deregister the instance and cancel the heartbeat sending loop.
 		e.DeregisterInstance(ins.ins)
 		cancel()
 		ins.running = false
@@ -118,7 +122,7 @@ func (ins *Instance) run(e *fargo.EurekaConnection) {
 	}
 }
 
-// 监听操作系统停止信号
+// Stop the instance when receive SIGINT and SIGTERM signal.
 func (ins *Instance) listenSystemTerm(cleanFunc func()) {
 	exitCh := make(chan os.Signal)
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
@@ -131,7 +135,7 @@ func (ins *Instance) listenSystemTerm(cleanFunc func()) {
 	}
 }
 
-// Stop 停止实例
+// Stop stops the instance. Deregister the instance from the eureka server.
 func (ins *Instance) Stop() error {
 	ins.runM.RLock()
 	defer ins.runM.RUnlock()
@@ -146,7 +150,7 @@ func (ins *Instance) Stop() error {
 	return nil
 }
 
-// IsRunning 返回实例是否正处于运行
+// IsRunning tells whether the instance is still running.
 func (ins *Instance) IsRunning() bool {
 	ins.runM.RLock()
 	defer ins.runM.RUnlock()
@@ -154,7 +158,6 @@ func (ins *Instance) IsRunning() bool {
 	return ins.running
 }
 
-// 获取 fargo.Instance 实例
 func (ins *Instance) getFargoInstance() *fargo.Instance {
 	ins.insOnce.Do(func() {
 		ins.ins = &fargo.Instance{
@@ -176,14 +179,14 @@ func (ins *Instance) getFargoInstance() *fargo.Instance {
 			ins.ins.SecurePortEnabled = true
 		}
 
-		// 填充 homePageUrl
+		// handle homePageUrl
 		if ins.ins.SecurePortEnabled {
 			ins.ins.HomePageUrl = fmt.Sprintf("https://%s:%d/", ins.ins.IPAddr, ins.SecurePort)
 		} else if ins.ins.PortEnabled {
 			ins.ins.HomePageUrl = fmt.Sprintf("http://%s:%d/", ins.ins.IPAddr, ins.Port)
 		}
 
-		// TODO: 填充 healthCheckUrl 和 statusPageUrl
+		// TODO: handle healthCheckUrl and statusPageUrl
 		// ins.ins.HealthCheckUrl = ins.ins.HomePageUrl + "/health"
 		// ins.ins.StatusPageUrl = ins.ins.HomePageUrl + "/info"
 	})
@@ -191,12 +194,12 @@ func (ins *Instance) getFargoInstance() *fargo.Instance {
 	return ins.ins
 }
 
-// NewInstance 新建一个实例
+// NewInstance returns a new Instance with no port enabled.
 func NewInstance(app string, serviceUrls ...string) (*Instance, error) {
 	return NewInstanceWithPort(app, 0, serviceUrls...)
 }
 
-// NewInstanceWithPort 新建一个带有 HTTP 端口的实例
+// NewInstanceWithPort returns a new Instance with one port enabled.
 func NewInstanceWithPort(app string, port int, serviceUrls ...string) (*Instance, error) {
 	if app == "" {
 		return nil, errors.New("app can not be empty")
@@ -216,7 +219,8 @@ func NewInstanceWithPort(app string, port int, serviceUrls ...string) (*Instance
 	return ins, nil
 }
 
-// NewInstanceWithSecurePort 新建一个带有 HTTPS 端口的实例
+// NewInstanceWithSecurePort returns a new Instance with one secure port(HTTPS)
+// enabled.
 func NewInstanceWithSecurePort(app string, securePort int, serviceUrls ...string) (*Instance, error) {
 	if app == "" {
 		return nil, errors.New("app can not be empty")
@@ -237,12 +241,12 @@ func NewInstanceWithSecurePort(app string, securePort int, serviceUrls ...string
 }
 
 func (ins *Instance) autoFill() {
-	// 尝试自动填充 IP
+	// Try to get ip automatically and fill into the IPAddr of instance.
 	if ip, ok := AutoIP4(); ok {
 		ins.IPAddr = ip
 	}
 
-	// 尝试自动填充 HostName
+	// Fill in the Hostname of instance.
 	var hn string
 	hn, _ = os.Hostname()
 	if hn == "" {
@@ -255,12 +259,12 @@ func (ins *Instance) autoFill() {
 	ins.HostName = hn
 }
 
-// GetAppClient 根据 App 名称获取 AppClient
+// GetAppClient returns a new AppClient by app name.
 func (ins *Instance) GetAppClient(app string) *AppClient {
 	return ins.GetAppClientWithTimeout(app, 0)
 }
 
-// GetAppClientWithTimeout 根据 App 名称获取带有超时的 AppClient
+// GetAppClientWithTimeout returns a new AppClient with timeout by app name.
 func (ins *Instance) GetAppClientWithTimeout(app string, timeout time.Duration) *AppClient {
 	return &AppClient{
 		e:      ins.e,

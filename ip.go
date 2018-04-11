@@ -7,7 +7,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-// AutoIP4 自动获取适当的 IP4
+// AutoIP4 fetch the proper IPv4 address.
+//
+// Still not stable and reliable.
 func AutoIP4() (string, bool) {
 	ipsMap, err := allIPs()
 	if err != nil {
@@ -23,12 +25,14 @@ func AutoIP4() (string, bool) {
 			}
 		}
 
-		// TODO: 处理其他 interface 的 IP
+		// TODO: Handle ip from other interface
 	}
 
 	return "", false
 }
 
+// allIPs returns map including ip list mapping to their interface. Map key is
+// interface name. Map value is the ip list belongs to that interface.
 func allIPs() (map[string][]string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {

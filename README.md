@@ -4,7 +4,7 @@
 
 A simple package used for golang developing integrated with eureka.
 
-This package wraps [hudl/fargo](github.com/hudl/fargo) to communicate with eureka server.
+This package wraps [hudl/fargo](https://github.com/hudl/fargo) to communicate with eureka server.
 
 ## Features now
 
